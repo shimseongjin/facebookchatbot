@@ -136,19 +136,19 @@ function receivedMessage(event) {
  var weat;
  console.log(messageText);
 var seen = {
-			recipient : {
-				id: senderID
-			},
-			sender_action:"mark_seen"
-		};
-		callSendAPI(seen);
-		var typingon = {
-			recipient : {
-				id: senderID
-			},
-			sender_action:"typing_on"
-		};
-		callSendAPI(typingon);
+         recipient : {
+            id: senderID
+         },
+         sender_action:"mark_seen"
+      };
+      callSendAPI(seen);
+      var typingon = {
+         recipient : {
+            id: senderID
+         },
+         sender_action:"typing_on"
+      };
+      callSendAPI(typingon);
    if(food != -1){
     forecast.get([37.5, 127], function(err, weather) {
   if(err) return console.dir(err);
@@ -234,11 +234,23 @@ function handleApiAiResponse(sender, response) {
                text: responseText
             }
          };
-         callsearhAPI(messageData);
+       papago(messageData);
+         //calladultAPI(messageData);
          break;
-		 case "input.img":
+       case "input.img":
          sendimgMessage(sender, responseText);
          break;
+       case "input.translation":
+       var messageData = {
+            recipient: {
+               id: sender
+            },
+            message: {
+               text: responseText
+            }
+         };
+       papago(messageData);
+       break;
         default:
             sendTextMessage(sender, responseText);
       }   
@@ -403,7 +415,7 @@ var programtitle = new Array();
          }
    
          for(var j = 0; j < airtime.length-1; j++){
-			 if(k < ptime[j] && j == 0){
+          if(k < ptime[j] && j == 0){
                sendmessage = '현재 올리브 티비에서는 '+programtitle[j]+'이 방송 중입니다.';
                break;
             }
@@ -460,50 +472,87 @@ function callSendAPI(messageData) {
     }
   });  
 }
-
+function calladultAPI (messageData) {
+    var adultresult;
+    var searchreq = {
+        query: messageData.message.text,
+      };
+   var apiurl = 'https://openapi.naver.com/v1/search/adult.json?query=' + encodeURI(searchreq.query);
+   var adult = {
+      headers: {
+         'X-Naver-Client-Id':config.NAVER_CLIENT_ID, 
+         'X-Naver-Client-Secret': config.NAVER_CLIENT_SECRET
+         },
+       url: apiurl
+   }
+   request(adult, function(error, response, adult){
+      var adultresult = JSON.parse(adult);
+      console.log(adultresult.adult);
+      if(adultresult.adult!=1)
+      {
+         callsearhAPI(messageData);
+      }
+      else{
+         messageData.message.text = '성인 검색어를 입력하셨습니다.';
+         callSendAPI(messageData);
+      }
+      
+   });
+}
 function callsearhAPI (messageData) {
    var blogbody;
    var resultm;
+   var apiurl; 
    var searchreq = {
-      query: messageData.message.text,
-      sort: 'sim'
-   }
-   var apiurl = 'https://openapi.naver.com/v1/search/blog.json?query=' + encodeURI(searchreq.query)+'&display:10&start:1&sort:sim';
+        query: messageData.message.text,
+        sort: 'sim'
+      };
+
+
+   apiurl = 'https://openapi.naver.com/v1/search/encyc.json?query=' + encodeURI(searchreq.query)+'&display:10&start:1&sort:sim';
    var options = {
       headers: {
          'X-Naver-Client-Id':config.NAVER_CLIENT_ID, 
          'X-Naver-Client-Secret': config.NAVER_CLIENT_SECRET
          },
-      url: apiurl,
+      url: apiurl
    }
+   var mdata = cloneObj(messageData);
    request(options, function(error, response, body){
       blogbody = JSON.parse(body);
-     var mdata = cloneObj(messageData);
-    if(blogbody["total"] == 0)
-    {
-      var ms = {
-      recipient: {
-         id: messageData.recipient.id
-      },
-      message: {
-         text: '검색 결과가 없습니다.'
-      }
-      };
-       callSendAPI(ms);
-       return;
-    }
-    else{
-       console.log(blogbody);
       resultm ='1.'+strip_tags(blogbody["items"][0]["title"])+'\n'
      +blogbody["items"][0]["link"]+'\n'+'2.'+strip_tags(blogbody["items"][1]["title"])+'\n'
      +blogbody["items"][1]["link"]+'\n'+'3.'+strip_tags(blogbody["items"][2]["title"])+'\n'+blogbody["items"][2]["link"];
       mdata.message.text=resultm;
-     //console.log(body);
       callSendAPI(mdata);
-   }
    });
+   
 }
 
+function papago(messageData){
+   var api_url = 'https://openapi.naver.com/v1/papago/n2mt';
+   var options = {
+      headers: {'X-Naver-Client-Id':config.NAVER_CLIENT_ID, 
+         'X-Naver-Client-Secret': config.NAVER_CLIENT_SECRET
+       },
+       url: api_url,
+       form: {'source':'ko', 'target':'en', 'text': messageData.message.text}
+       
+    };
+   request.post(options, function (error, response, body) {
+      if (!error && response.statusCode == 200) {
+        var objBody = JSON.parse(response.body);
+      var mdata = cloneObj(messageData);
+      var resultm = messageData.message.text+'의 번역 결과는 '+objBody.message.result.translatedText +'입니다.';
+      mdata.message.text=resultm;
+        callSendAPI(mdata);
+      } else {
+        console.log('번역 실패');
+      }
+   });
+   
+
+}
 
 function strip_tags (str) {
     return str.replace(/(<([^>]+)>)/ig,"");
@@ -515,7 +564,7 @@ function cloneObj(o){
      message:{text: null}
          };
   n.recipient.id = o.recipient.id;
-  n.message.data = o.message.data;
+  n.message.text = o.message.text;
   return n;
 }
 
