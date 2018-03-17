@@ -1,5 +1,8 @@
 'use strict';
 
+var Client = require('mongodb').MongoClient;
+var db;
+
 const apiai = require('apiai');
 const config = require('./config');
 const express = require('express');
@@ -90,6 +93,7 @@ function receivedMessage(event) {
   var timeOfMessage = event.timestamp;
   var message = event.message;
   
+  
   if (!sessionIds.has(senderID)) {
 		sessionIds.set(senderID, uuid.v1());
   }
@@ -102,9 +106,13 @@ function receivedMessage(event) {
 
   var messageText = message.text;
   var messageAttachments = message.attachments;
+  var food=messageText.indexOf('메뉴추천');
 
  console.log(messageText);
-  if (messageText) { 
+ if(food != -1){
+	 sendDatabase(senderID, messageText);
+ }
+ else if (messageText) { 
         sendToApiAi(senderID, messageText);    
   } 
 }
@@ -154,8 +162,9 @@ function handleApiAiResponse(sender, response) {
 							"title":"치킨",
 							"payload":"COURSE_ACTION"
 						}
-			
+						
 					];
+					responseText+="\n무엇을 원하시나요?";
 						
 					sendQuickReply(sender, responseText,quick);
 				}
@@ -196,6 +205,72 @@ function sendTextMessage(recipientId, messageText) {
   callSendAPI(messageData);
 }
 
+/////////////////// 데이터베이스 추가
+function sendDatabase(recipientId, messageText) {
+	var message = messageText;
+
+	var time;
+	
+	function timere() {
+		var d = new Date();
+		var n = d.getHours(); 
+		if(n>=6&&n<=9){
+			time=1;
+		}
+		else if(n>9&&n<=14){
+			time=2;
+		}
+		else if(n>14&&n<=20){
+			time=3;
+		}
+		else{
+			time=4;
+		}
+	} 
+	
+	timere();
+	message = '테스트start'
+	Client.connect('mongodb://localhost:27017/Biryong', function(error, db){
+		var query = {time:parseInt(time)};
+		var gil = 0;
+		var cursor = db.collection('foods').find(query);  //길이 구함
+		
+		cursor.each(function(err,doc){
+			if(err){
+				console.log(err);
+			}
+			else{
+				if(doc != null){
+					gil = gil + 1;
+				}
+				else {
+					var curso = db.collection('foods').find(query).skip(Math.floor(Math.random() * gil)).limit(1);
+					curso.each(function(err,doc){
+						if(err){
+							console.log(err);
+						}
+						else{
+							if(doc != null){
+								console.log(doc);
+								var messageData = {
+									recipient: {
+										id: recipientId
+									},
+									message: {
+										text: '이름 : '+doc.name+'\n'+'가격 : '+doc.money+'원\n'+'재료 : '+doc.ingredients+'\n'+'레시피 : '+doc.recipe
+									}
+								}; 
+								callSendAPI(messageData);
+							
+							}
+						}
+					});
+				}
+			}
+		});
+	});
+}
+
 function callSendAPI(messageData) {
   request({
     uri: 'https://graph.facebook.com/v2.6/me/messages',
@@ -217,6 +292,8 @@ function callSendAPI(messageData) {
     }
   });  
 }
+
+
 
 function isDefined(obj) {
 	if (typeof obj == 'undefined') {
