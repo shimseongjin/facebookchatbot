@@ -28,8 +28,6 @@ app.use(bodyParser.urlencoded({
 // Process application/json
 app.use(bodyParser.json())
 
-
-
 app.get('/', function (req, res) {
     res.send('Hello world, I am a chat bot')
 })
@@ -44,6 +42,16 @@ app.get('/webhook/', function (req, res) {
 		res.sendStatus(403);
 	}
 })
+
+//<-- sleep -->//
+function sleep(num){	//[1/1000초]
+	var now = new Date();
+	var stop = now.getTime() + num;
+	while(true){
+		now = new Date();
+		if(now.getTime() > stop)return;
+	}
+}
 
 app.post('/webhook', function (req, res) {
   var data = req.body;
@@ -93,23 +101,69 @@ function receivedMessage(event) {
 
  console.log(messageText);
   if (messageText) { 
-
+		var seen = {
+			recipient : {
+				id: senderID
+			},
+			sender_action:"mark_seen"
+		};
+		callSendAPI(seen);
+		var typingon = {
+			recipient : {
+				id: senderID
+			},
+			sender_action:"typing_on"
+		};
+		callSendAPI(typingon);
+	
         sendTextMessage(senderID, messageText);
-    
   } 
 }
 
 function sendTextMessage(recipientId, messageText) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      text: messageText
-    }
-  };
+	var message = messageText;
+	var botname = message.indexOf('이름');
+	var timer = message.indexOf('배고파');
+	if(botname != -1){
+		message = '안녕하세요 저는 비룡입니다.'
+	}
+	if(timer != -1){
+		var d = new Date();
+		var n = d.getHours(); 
+		if(n>=6&&n<=9){
+			message = '아침 드시겠어요?';
+		}
+		else if(n>9&&n<=14){
+			message = '점심 드시겠어요?';
+		}
+		else if(n>14&&n<=20){
+			message = '저녁 드시겠어요?';
+		}
+		else{
+			message = '야식 드시겠어요?';
+		}
+	}
+	
+	var typingoff = {
+		recipient : {
+			id: recipientId
+		},
+		sender_action:"typing_off"
+	};
+	callSendAPI(typingoff);
+	
+	
+	var messageData = {
+		recipient: {
+			id: recipientId
+		},
+		message: {
+			text: message
+		}
+	}; 
+	callSendAPI(messageData);
+	
 
-  callSendAPI(messageData);
 }
 
 function callSendAPI(messageData) {
