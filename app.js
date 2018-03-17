@@ -2,6 +2,19 @@
 
 var Client = require('mongodb').MongoClient;
 var db;
+var Forecast = require('forecast');
+ 
+// npm install forecast --save 해야함
+var forecast = new Forecast({
+  service: 'forecast.io',
+  key: '1f27d9cb3004fc05046a80cb13481533',
+  units: 'celcius', 
+  cache: true,      
+  ttl: {            
+    minutes: 27,
+    seconds: 45
+    }
+});
 
 const apiai = require('apiai');
 const config = require('./config');
@@ -107,10 +120,27 @@ function receivedMessage(event) {
   var messageText = message.text;
   var messageAttachments = message.attachments;
   var food=messageText.indexOf('메뉴추천');
+  var weat;
 
  console.log(messageText);
  if(food != -1){
-	 sendDatabase(senderID, messageText);
+	 forecast.get([37.5, 127], function(err, weather) {
+  if(err) return console.dir(err);
+  
+  console.dir(weather.currently);
+  if(weather.currently.temperature>0){
+		weat=1;
+	}
+	else{
+		weat=2;
+	}
+	  
+	  //// 날씨 추가
+	  sendDatabase(senderID, messageText, weat);
+	  
+  });
+  
+  
  }
  else if (messageText) { 
         sendToApiAi(senderID, messageText);    
@@ -206,9 +236,8 @@ function sendTextMessage(recipientId, messageText) {
 }
 
 /////////////////// 데이터베이스 추가
-function sendDatabase(recipientId, messageText) {
+function sendDatabase(recipientId, messageText, weat) {
 	var message = messageText;
-
 	var time;
 	
 	function timere() {
@@ -228,10 +257,11 @@ function sendDatabase(recipientId, messageText) {
 		}
 	} 
 	
+
 	timere();
 	message = '테스트start'
 	Client.connect('mongodb://localhost:27017/Biryong', function(error, db){
-		var query = {time:parseInt(time)};
+		var query = {time:parseInt(time),weather:parseInt(weat)}; // 쿼리 추가
 		var gil = 0;
 		var cursor = db.collection('foods').find(query);  //길이 구함
 		
