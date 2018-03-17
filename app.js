@@ -17,8 +17,7 @@ var forecast = new Forecast({
     }
 });
 
-var airtime = new Array();
-var programtitle = new Array();
+
 var db;
 
 const apiai = require('apiai');
@@ -29,17 +28,26 @@ const request = require('request');
 const app = express();
 const uuid = require('uuid');
 
-
+var searchflag=true;
 // Messenger API parameters
 if (!config.FB_PAGE_TOKEN) {
-	throw new Error('missing FB_PAGE_TOKEN');
+   throw new Error('missing FB_PAGE_TOKEN');
 }
 if (!config.FB_VERIFY_TOKEN) {
-	throw new Error('missing FB_VERIFY_TOKEN');
+   throw new Error('missing FB_VERIFY_TOKEN');
 }
 if (!config.API_AI_CLIENT_ACCESS_TOKEN) {
-	throw new Error('missing API_AI_CLIENT_ACCESS_TOKEN');
+   throw new Error('missing API_AI_CLIENT_ACCESS_TOKEN');
 }
+if   (!config.NAVER_CLIENT_ID)
+{
+   throw new Error('missing NAVER_CLIENT_ID');
+}
+if (!config.NAVER_CLIENT_SECRET)
+{
+   throw new Error('missing NAVER_CLIENT_SECRET');
+}
+
 
 app.set('port', (process.env.PORT || 80))
 
@@ -48,14 +56,14 @@ app.use(express.static('public'));
 
 // Process application/x-www-form-urlencoded
 app.use(bodyParser.urlencoded({
-	extended: false
+   extended: false
 }))
 
 // Process application/json
 app.use(bodyParser.json())
 
 const apiAiService = apiai(config.API_AI_CLIENT_ACCESS_TOKEN, {
-	language: "ko"	
+   language: "ko"   
 });
 const sessionIds = new Map();
 
@@ -66,12 +74,12 @@ app.get('/', function (req, res) {
 // for Facebook verification
 app.get('/webhook/', function (req, res) {
     console.log("request");
-	if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === config.FB_VERIFY_TOKEN) {
-		res.status(200).send(req.query['hub.challenge']);
-	} else {
-		console.error("Failed validation. Make sure the validation tokens match.");
-		res.sendStatus(403);
-	}
+   if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === config.FB_VERIFY_TOKEN) {
+      res.status(200).send(req.query['hub.challenge']);
+   } else {
+      console.error("Failed validation. Make sure the validation tokens match.");
+      res.sendStatus(403);
+   }
 })
 
 app.post('/webhook', function (req, res) {
@@ -113,7 +121,7 @@ function receivedMessage(event) {
   
   
   if (!sessionIds.has(senderID)) {
-		sessionIds.set(senderID, uuid.v1());
+      sessionIds.set(senderID, uuid.v1());
   }
 
   console.log("Received message for user %d and page %d at %d with message:", 
@@ -127,21 +135,35 @@ function receivedMessage(event) {
   var food=messageText.indexOf('메뉴추천');
  var weat;
  console.log(messageText);
-if(food != -1){
-	 forecast.get([37.5, 127], function(err, weather) {
+var seen = {
+			recipient : {
+				id: senderID
+			},
+			sender_action:"mark_seen"
+		};
+		callSendAPI(seen);
+		var typingon = {
+			recipient : {
+				id: senderID
+			},
+			sender_action:"typing_on"
+		};
+		callSendAPI(typingon);
+   if(food != -1){
+    forecast.get([37.5, 127], function(err, weather) {
   if(err) return console.dir(err);
   
   //console.dir(weather.currently);
   if(weather.currently.temperature>0){
-		weat=1;
-	}
-	else{
-		weat=2;
-	}
-	  
-	  //// 날씨 추가
-	  sendDatabase(senderID, messageText, weat);
-	  
+      weat=1;
+   }
+   else{
+      weat=2;
+   }
+     
+     //// 날씨 추가
+     sendDatabase(senderID, messageText, weat);
+     
   });
   
   
@@ -149,81 +171,94 @@ if(food != -1){
  else if (messageText) { 
         sendToApiAi(senderID, messageText);    
   }
-
 }
 
 function sendToApiAi(sender, text) {
-	
-	var apiaiRequest = apiAiService.textRequest(text, {
-		sessionId: sessionIds.get(sender),
-		lang: 'ko'
-	});
+   
+   var apiaiRequest = apiAiService.textRequest(text, {
+      sessionId: sessionIds.get(sender),
+      lang: 'ko'
+   });
 
-	apiaiRequest.on('response', (response) => {
-		handleApiAiResponse(sender, response);		
-	});
+   apiaiRequest.on('response', (response) => {
+      handleApiAiResponse(sender, response);      
+   });
 
-	apiaiRequest.on('error', (error) => console.error(error));
-	apiaiRequest.end();
+   apiaiRequest.on('error', (error) => console.error(error));
+   apiaiRequest.end();
 }
 
 function handleApiAiResponse(sender, response) {
-	var responseText = response.result.fulfillment.speech;
-	var messages = response.result.fulfillment.messages;
-	var action = response.result.action;
-	var contexts = response.result.contexts;
-	var parameters = response.result.parameters;
-	var actionIncompleted = response.result.actionIncomplete;
-	
-	if(actionIncompleted) sendTextMessage(sender, responseText);
-	else{
-		switch (action) {
-			case "input.meal":
-				if(!actionIncompleted){
-					var quick = [
-						{
-							"content_type":"text",
-							"title":"족발",
-							"payload":"COURSE_ACTION"
-						},
-						{
-							"content_type":"text",
-							"title":"보쌈",
-							"payload":"COURSE_ACTION"
-						},
-						{
-							"content_type":"text",
-							"title":"치킨",
-							"payload":"COURSE_ACTION"
-						}
-						
-					];
-					sendQuickReply(sender, responseText,quick);
-				}
-				break;
-			case "input.program":
-				sendProgram(sender,responseText)
-				break;
-			default:
-				sendTextMessage(sender, responseText);
-		}	
-	
-	}	
+   var responseText = response.result.fulfillment.speech;
+   var messages = response.result.fulfillment.messages;
+   var action = response.result.action;
+   var contexts = response.result.contexts;
+   var parameters = response.result.parameters;
+   var actionIncompleted = response.result.actionIncomplete;
+   
+   if(actionIncompleted) sendTextMessage(sender, responseText);
+   else{
+      switch (action) {
+         case "input.meal":
+            if(!actionIncompleted){
+               var quick = [
+                  {
+                     "content_type":"text",
+                     "title":"족발",
+                     "payload":"COURSE_ACTION"
+                  },
+                  {
+                     "content_type":"text",
+                     "title":"보쌈",
+                     "payload":"COURSE_ACTION"
+                  },
+                  {
+                     "content_type":"text",
+                     "title":"치킨",
+                     "payload":"COURSE_ACTION"
+                  }
+                  
+               ];
+               sendQuickReply(sender, responseText,quick);
+            }
+            break;
+         case "input.program":
+            sendProgram(sender,responseText)
+            break;
+      case "input.search":
+         var messageData = {
+            recipient: {
+               id: sender
+            },
+            message: {
+               text: responseText
+            }
+         };
+         callsearhAPI(messageData);
+         break;
+		 case "input.img":
+         sendimgMessage(sender, responseText);
+         break;
+        default:
+            sendTextMessage(sender, responseText);
+      }   
+   
+   }   
 }
 
 function sendQuickReply(recipientId, text, replies, metadata) {
-	var messageData = {
-		recipient: {
-			id: recipientId
-		},
-		message: {
-			text: text,
-			metadata: isDefined(metadata)?metadata:'',
-			quick_replies: replies
-		}
-	};
+   var messageData = {
+      recipient: {
+         id: recipientId
+      },
+      message: {
+         text: text,
+         metadata: isDefined(metadata)?metadata:'',
+         quick_replies: replies
+      }
+   };
 
-	callSendAPI(messageData);
+   callSendAPI(messageData);
 }
 
 
@@ -239,84 +274,102 @@ function sendTextMessage(recipientId, messageText) {
 
   callSendAPI(messageData);
 }
-
+function sendimgMessage(recipientId, messageText) {
+   const  Biryongimg = 'http://blogfiles7.naver.net/20150530_7/nuio4359_14329663081771aUgv_JPEG/%BF%E4%B8%AE%BF%D5_%BA%F1%B7%E6_DVD_%F1%E9%FC%A4%EC%E9%DB%E3%A3%A1_%F0%AF27%FC%A5_%28640x480_XviD_Vorbis%29.mkv_000316562.jpg';
+  var messageData = {
+    recipient: {
+      id: recipientId
+    },
+    message: {
+        attachment: {
+            type: 'image',
+            payload: { url: Biryongimg}
+        }
+    }
+  };
+  sendTextMessage(recipientId, '전 이렇게 생겼어요');
+  callSendAPI(messageData);
+  
+}
 /////////////////// 데이터베이스 추가
 function sendDatabase(recipientId, messageText, weat) {
-	var message = messageText;
-	var time;
-	
-	function timere() {
-		var d = new Date();
-		var n = d.getHours(); 
-		if(n>=6&&n<=9){
-			time=1;
-		}
-		else if(n>9&&n<=14){
-			time=2;
-		}
-		else if(n>14&&n<=20){
-			time=3;
-		}
-		else{
-			time=4;
-		}
-	} 
-	
+   var message = messageText;
+   var time;
+   
+   function timere() {
+      var d = new Date();
+      var n = d.getHours(); 
+      if(n>=6&&n<=9){
+         time=1;
+      }
+      else if(n>9&&n<=14){
+         time=2;
+      }
+      else if(n>14&&n<=20){
+         time=3;
+      }
+      else{
+         time=4;
+      }
+   } 
+   
 
-	timere();
-	message = '테스트start'
-	Client.connect('mongodb://localhost:27017/Biryong', function(error, db){
-		var query = {time:parseInt(time),weather:parseInt(weat)}; // 쿼리 추가
-		var gil = 0;
-		var cursor = db.collection('foods').find(query);  //길이 구함
-		
-		cursor.each(function(err,doc){
-			if(err){
-				console.log(err);
-			}
-			else{
-				if(doc != null){
-					gil = gil + 1;
-				}
-				else {
-					var curso = db.collection('foods').find(query).skip(Math.floor(Math.random() * gil)).limit(1);
-					curso.each(function(err,doc){
-						if(err){
-							console.log(err);
-						}
-						else{
-							if(doc != null){
-								console.log(doc);
-								var messageData = {
-									recipient: {
-										id: recipientId
-									},
-									message: {
-										text: '이름 : '+doc.name+'\n'+'가격 : '+doc.money+'원\n'+'재료 : '+doc.ingredients+'\n'+'레시피 : '+doc.recipe
-									}
-								}; 
-								callSendAPI(messageData);
-							
-							}
-						}
-					});
-				}
-			}
-		});
-	});
+   timere();
+   message = '테스트start'
+   Client.connect('mongodb://localhost:27017/Biryong', function(error, db){
+      var query = {time:parseInt(time),weather:parseInt(weat)}; // 쿼리 추가
+      var gil = 0;
+      var cursor = db.collection('foods').find(query);  //길이 구함
+      
+      cursor.each(function(err,doc){
+         if(err){
+            console.log(err);
+         }
+         else{
+            if(doc != null){
+               gil = gil + 1;
+            }
+            else {
+               var curso = db.collection('foods').find(query).skip(Math.floor(Math.random() * gil)).limit(1);
+               curso.each(function(err,doc){
+                  if(err){
+                     console.log(err);
+                  }
+                  else{
+                     if(doc != null){
+                        console.log(doc);
+                        var messageData = {
+                           recipient: {
+                              id: recipientId
+                           },
+                           message: {
+                              text: '이름 : '+doc.name+'\n'+'가격 : '+doc.money+'원\n'+'재료 : '+doc.ingredients+'\n'+'레시피 : '+doc.recipe
+                           }
+                        }; 
+                        callSendAPI(messageData);
+                     
+                     }
+                  }
+               });
+            }
+         }
+      });
+   });
 }
 
 //크롤링 추가
 function sendProgram(recipientId, messageText) {
-	var message = messageText;
-	var sendmessage = '올리브 티비'+messageText+'일자 편성표 안내 입니다.\n';
-	var phInstance, sitepage;
-	var url = 'http://olive.tving.com/olive/schedule';
+   var message = messageText;
+   var airtime = new Array();
+var programtitle = new Array();
+   var sendmessage = '올리브 티비'+messageText+'일자 편성표 안내 입니다.\n';
+   var phInstance, sitepage;
+   var url = 'http://olive.tving.com/olive/schedule';
 
-	if(message != '0'){ // 내일
-		url += '?startDate=' + message;
-	}
-	
+   if(message != '0'){ // 내일
+      url += '?startDate=' + message;
+   }
+   
     phantom.create().then((instance) => {
         phInstance = instance;
         return instance.createPage();
@@ -329,49 +382,53 @@ function sendProgram(recipientId, messageText) {
         var $ = cheerio.load(body);
         $('em.airTime').each(function (idx) {            
             var text = $(this).text().trim();
-			airtime.push(text);
+         airtime.push(text);
         })
-		$('div.program').each(function (idx) {            
+      $('div.program').each(function (idx) {            
             var text = $(this).attr('title');
-			programtitle.push(text);
+         programtitle.push(text);
         })
-		/////////////////////////
-		if(message == '0'){ // 지금
-			var d = new Date();
-			var n = parseInt(d.getHours()); 
-			var m = parseInt(d.getMinutes());
-			var k = n*100+m;
+      /////////////////////////
+      if(message == '0'){ // 지금
+         var d = new Date();
+         var n = parseInt(d.getHours()); 
+         var m = parseInt(d.getMinutes());
+         var k = n*100+m;
 
-			var ptime = new Array();
-			for(var j = 0; j < airtime.length; j++){
-				var t = parseInt(airtime[j].substr(0,2))*100;
-				t = t + parseInt(airtime[j].substr(3,6));
-				ptime.push(t);
-			}
-	
-			for(var j = 0; j < airtime.length-1; j++){
-				if(k >= ptime[j] && k < ptime[j+1]){
-					sendmessage = '현재 올리브 티비에서는 '+programtitle[j]+'이 방송 중입니다.';
-					break;
-				}
-			}
-		}
-		else {  //그 외 날자를 받았을 경우
-			for(var j = 0; j < airtime.length; j++){
-				sendmessage += airtime[j] + ' : ' + programtitle[j]+'\n';
-			}
-			console.log(sendmessage);
-		}
-			var messageData = {
-		recipient: {
-			id: recipientId
-		},
-		message: {
-			text: sendmessage
-		}
-	}; 
-	callSendAPI(messageData);
-		/////////////////////////
+         var ptime = new Array();
+         for(var j = 0; j < airtime.length; j++){
+            var t = parseInt(airtime[j].substr(0,2))*100;
+            t = t + parseInt(airtime[j].substr(3,6));
+            ptime.push(t);
+         }
+   
+         for(var j = 0; j < airtime.length-1; j++){
+			 if(k < ptime[j] && j == 0){
+               sendmessage = '현재 올리브 티비에서는 '+programtitle[j]+'이 방송 중입니다.';
+               break;
+            }
+            if(k >= ptime[j] && k < ptime[j+1]){
+               sendmessage = '현재 올리브 티비에서는 '+programtitle[j]+'이 방송 중입니다.';
+               break;
+            }
+         }
+      }
+      else {  //그 외 날자를 받았을 경우
+         for(var j = 7; j < airtime.length; j++){
+            sendmessage += airtime[j] + ' : ' + programtitle[j]+'\n';
+         }
+         console.log(sendmessage);
+      }
+         var messageData = {
+      recipient: {
+         id: recipientId
+      },
+      message: {
+         text: sendmessage
+      }
+   }; 
+   callSendAPI(messageData);
+      /////////////////////////
         sitepage.close().then(() => {
             phInstance.exit();
         })
@@ -404,18 +461,74 @@ function callSendAPI(messageData) {
   });  
 }
 
+function callsearhAPI (messageData) {
+   var blogbody;
+   var resultm;
+   var searchreq = {
+      query: messageData.message.text,
+      sort: 'sim'
+   }
+   var apiurl = 'https://openapi.naver.com/v1/search/blog.json?query=' + encodeURI(searchreq.query)+'&display:10&start:1&sort:sim';
+   var options = {
+      headers: {
+         'X-Naver-Client-Id':config.NAVER_CLIENT_ID, 
+         'X-Naver-Client-Secret': config.NAVER_CLIENT_SECRET
+         },
+      url: apiurl,
+   }
+   request(options, function(error, response, body){
+      blogbody = JSON.parse(body);
+     var mdata = cloneObj(messageData);
+    if(blogbody["total"] == 0)
+    {
+      var ms = {
+      recipient: {
+         id: messageData.recipient.id
+      },
+      message: {
+         text: '검색 결과가 없습니다.'
+      }
+      };
+       callSendAPI(ms);
+       return;
+    }
+    else{
+       console.log(blogbody);
+      resultm ='1.'+strip_tags(blogbody["items"][0]["title"])+'\n'
+     +blogbody["items"][0]["link"]+'\n'+'2.'+strip_tags(blogbody["items"][1]["title"])+'\n'
+     +blogbody["items"][1]["link"]+'\n'+'3.'+strip_tags(blogbody["items"][2]["title"])+'\n'+blogbody["items"][2]["link"];
+      mdata.message.text=resultm;
+     //console.log(body);
+      callSendAPI(mdata);
+   }
+   });
+}
 
+
+function strip_tags (str) {
+    return str.replace(/(<([^>]+)>)/ig,"");
+}
+
+function cloneObj(o){
+  var n = {
+     recipient:{id: null},
+     message:{text: null}
+         };
+  n.recipient.id = o.recipient.id;
+  n.message.data = o.message.data;
+  return n;
+}
 
 function isDefined(obj) {
-	if (typeof obj == 'undefined') {
-		return false;
-	}
+   if (typeof obj == 'undefined') {
+      return false;
+   }
 
-	if (!obj) {
-		return false;
-	}
+   if (!obj) {
+      return false;
+   }
 
-	return obj != null;
+   return obj != null;
 }
 
 // Spin up the server
