@@ -1,10 +1,11 @@
-'use strict';
+ï»¿'use strict';
 
 var Client = require('mongodb').MongoClient;
-var db;
+var cheerio = require('cheerio');
+var phantom = require('phantom');
 var Forecast = require('forecast');
  
-// npm install forecast --save ÇØ¾ßÇÔ
+// npm install forecast --save í•´ì•¼í•¨
 var forecast = new Forecast({
   service: 'forecast.io',
   key: '1f27d9cb3004fc05046a80cb13481533',
@@ -15,6 +16,10 @@ var forecast = new Forecast({
     seconds: 45
     }
 });
+
+var airtime = new Array();
+var programtitle = new Array();
+var db;
 
 const apiai = require('apiai');
 const config = require('./config');
@@ -119,15 +124,14 @@ function receivedMessage(event) {
 
   var messageText = message.text;
   var messageAttachments = message.attachments;
-  var food=messageText.indexOf('¸Þ´ºÃßÃµ');
-  var weat;
-
+  var food=messageText.indexOf('ë©”ë‰´ì¶”ì²œ');
+ var weat;
  console.log(messageText);
- if(food != -1){
+if(food != -1){
 	 forecast.get([37.5, 127], function(err, weather) {
   if(err) return console.dir(err);
   
-  console.dir(weather.currently);
+  //console.dir(weather.currently);
   if(weather.currently.temperature>0){
 		weat=1;
 	}
@@ -135,7 +139,7 @@ function receivedMessage(event) {
 		weat=2;
 	}
 	  
-	  //// ³¯¾¾ Ãß°¡
+	  //// ë‚ ì”¨ ì¶”ê°€
 	  sendDatabase(senderID, messageText, weat);
 	  
   });
@@ -144,7 +148,8 @@ function receivedMessage(event) {
  }
  else if (messageText) { 
         sendToApiAi(senderID, messageText);    
-  } 
+  }
+
 }
 
 function sendToApiAi(sender, text) {
@@ -172,32 +177,32 @@ function handleApiAiResponse(sender, response) {
 	
 	if(actionIncompleted) sendTextMessage(sender, responseText);
 	else{
-	
 		switch (action) {
 			case "input.meal":
 				if(!actionIncompleted){
 					var quick = [
 						{
 							"content_type":"text",
-							"title":"Á·¹ß",
+							"title":"ì¡±ë°œ",
 							"payload":"COURSE_ACTION"
 						},
 						{
 							"content_type":"text",
-							"title":"º¸½Ó",
+							"title":"ë³´ìŒˆ",
 							"payload":"COURSE_ACTION"
 						},
 						{
 							"content_type":"text",
-							"title":"Ä¡Å²",
+							"title":"ì¹˜í‚¨",
 							"payload":"COURSE_ACTION"
 						}
 						
 					];
-					responseText+="\n¹«¾ùÀ» ¿øÇÏ½Ã³ª¿ä?";
-						
 					sendQuickReply(sender, responseText,quick);
 				}
+				break;
+			case "input.program":
+				sendProgram(sender,responseText)
 				break;
 			default:
 				sendTextMessage(sender, responseText);
@@ -235,7 +240,7 @@ function sendTextMessage(recipientId, messageText) {
   callSendAPI(messageData);
 }
 
-/////////////////// µ¥ÀÌÅÍº£ÀÌ½º Ãß°¡
+/////////////////// ë°ì´í„°ë² ì´ìŠ¤ ì¶”ê°€
 function sendDatabase(recipientId, messageText, weat) {
 	var message = messageText;
 	var time;
@@ -259,11 +264,11 @@ function sendDatabase(recipientId, messageText, weat) {
 	
 
 	timere();
-	message = 'Å×½ºÆ®start'
+	message = 'í…ŒìŠ¤íŠ¸start'
 	Client.connect('mongodb://localhost:27017/Biryong', function(error, db){
-		var query = {time:parseInt(time),weather:parseInt(weat)}; // Äõ¸® Ãß°¡
+		var query = {time:parseInt(time),weather:parseInt(weat)}; // ì¿¼ë¦¬ ì¶”ê°€
 		var gil = 0;
-		var cursor = db.collection('foods').find(query);  //±æÀÌ ±¸ÇÔ
+		var cursor = db.collection('foods').find(query);  //ê¸¸ì´ êµ¬í•¨
 		
 		cursor.each(function(err,doc){
 			if(err){
@@ -287,7 +292,7 @@ function sendDatabase(recipientId, messageText, weat) {
 										id: recipientId
 									},
 									message: {
-										text: 'ÀÌ¸§ : '+doc.name+'\n'+'°¡°Ý : '+doc.money+'¿ø\n'+'Àç·á : '+doc.ingredients+'\n'+'·¹½ÃÇÇ : '+doc.recipe
+										text: 'ì´ë¦„ : '+doc.name+'\n'+'ê°€ê²© : '+doc.money+'ì›\n'+'ìž¬ë£Œ : '+doc.ingredients+'\n'+'ë ˆì‹œí”¼ : '+doc.recipe
 									}
 								}; 
 								callSendAPI(messageData);
@@ -299,6 +304,82 @@ function sendDatabase(recipientId, messageText, weat) {
 			}
 		});
 	});
+}
+
+//í¬ë¡¤ë§ ì¶”ê°€
+function sendProgram(recipientId, messageText) {
+	var message = messageText;
+	var sendmessage = 'ì˜¬ë¦¬ë¸Œ í‹°ë¹„'+messageText+'ì¼ìž íŽ¸ì„±í‘œ ì•ˆë‚´ ìž…ë‹ˆë‹¤.\n';
+	var phInstance, sitepage;
+	var url = 'http://olive.tving.com/olive/schedule';
+
+	if(message != '0'){ // ë‚´ì¼
+		url += '?startDate=' + message;
+	}
+	
+    phantom.create().then((instance) => {
+        phInstance = instance;
+        return instance.createPage();
+    }).then((page) => {
+        sitepage = page;
+        return page.open(url);
+    }).then((status) => {
+        return sitepage.property('content');
+    }).then((body) => {
+        var $ = cheerio.load(body);
+        $('em.airTime').each(function (idx) {            
+            var text = $(this).text().trim();
+			airtime.push(text);
+        })
+		$('div.program').each(function (idx) {            
+            var text = $(this).attr('title');
+			programtitle.push(text);
+        })
+		/////////////////////////
+		if(message == '0'){ // ì§€ê¸ˆ
+			var d = new Date();
+			var n = parseInt(d.getHours()); 
+			var m = parseInt(d.getMinutes());
+			var k = n*100+m;
+
+			var ptime = new Array();
+			for(var j = 0; j < airtime.length; j++){
+				var t = parseInt(airtime[j].substr(0,2))*100;
+				t = t + parseInt(airtime[j].substr(3,6));
+				ptime.push(t);
+			}
+	
+			for(var j = 0; j < airtime.length-1; j++){
+				if(k >= ptime[j] && k < ptime[j+1]){
+					sendmessage = 'í˜„ìž¬ ì˜¬ë¦¬ë¸Œ í‹°ë¹„ì—ì„œëŠ” '+programtitle[j]+'ì´ ë°©ì†¡ ì¤‘ìž…ë‹ˆë‹¤.';
+					break;
+				}
+			}
+		}
+		else {  //ê·¸ ì™¸ ë‚ ìžë¥¼ ë°›ì•˜ì„ ê²½ìš°
+			for(var j = 0; j < airtime.length; j++){
+				sendmessage += airtime[j] + ' : ' + programtitle[j]+'\n';
+			}
+			console.log(sendmessage);
+		}
+			var messageData = {
+		recipient: {
+			id: recipientId
+		},
+		message: {
+			text: sendmessage
+		}
+	}; 
+	callSendAPI(messageData);
+		/////////////////////////
+        sitepage.close().then(() => {
+            phInstance.exit();
+        })
+    }).catch((error) => {
+        console.log(error);
+        phInstance.exit();
+    });
+
 }
 
 function callSendAPI(messageData) {
